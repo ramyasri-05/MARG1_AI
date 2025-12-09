@@ -19,13 +19,9 @@ const Login = () => {
 
     const vijayawadaHospitals = [
         "Select Hospital",
-        "Ramesh Hospitals, MG Road",
-        "Manipal Hospital, Tadepalli",
-        "Kamineni Hospitals, Poranki",
-        "Andhra Hospitals, Bhavanipuram",
-        "Aayush Hospitals, Ramavarappadu",
-        "Sentini Hospitals, Ring Road",
-        "Capital Hospitals, Benz Circle"
+        "Ramesh Hospitals",
+        "Manipal Hospital",
+        "Government General Hospital"
     ];
 
     const handleDriverLogin = () => {
@@ -53,7 +49,7 @@ const Login = () => {
         }
         // Save Mock User
         localStorage.setItem('margUserRole', hospName);
-        alert("Account Created Successfully! Please Login.");
+        // alert("Account Created Successfully! Please Login."); // Removed as per user request
         setSearchParams({ view: 'login' });
     };
 
@@ -61,7 +57,7 @@ const Login = () => {
         // Mock Validation
         // In a real app, we'd check credentials here.
 
-        // Instead of auto-redirecting, just go to Role Selection
+        // Always go to Role Selection as per user request
         setSearchParams({ view: 'roles' });
     };
 
@@ -139,8 +135,8 @@ const Login = () => {
                                     alert("🔵 Mock Google Login\n\nSimulating authentication with Google...");
                                     localStorage.setItem('margUserRole', 'driver'); // Defaulting to Driver for demo
                                     setTimeout(() => {
-                                        alert("Login Successful! Redirecting to Driver Dashboard...");
-                                        navigate('/driver');
+                                        alert("Login Successful! Please select your role.");
+                                        setSearchParams({ view: 'roles' });
                                     }, 1000);
                                 }}>
                                     <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="20" />

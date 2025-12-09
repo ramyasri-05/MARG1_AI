@@ -12,15 +12,19 @@ const center = {
     lng: 80.6480
 };
 
-const MapComponent = ({ signals, vehicle: propVehicle, destination, onNavigationUpdate }) => {
+const LIBRARIES = ['geometry'];
+
+const MapComponent = ({ signals, vehicle: propVehicle, vehicles: propVehicles, origin, destination, onNavigationUpdate }) => {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     const [directionsResponse, setDirectionsResponse] = useState(null);
     const [internalVehicle, setInternalVehicle] = useState(null);
     const mapRef = useRef(null);
     const animationRef = useRef(null);
 
-    // Use prop vehicle if no internal animation, otherwise use internal
-    const currentVehicle = internalVehicle || propVehicle;
+    // Combine single vehicle prop (Driver Dashboard) and list (Hospital Dashboard)
+    const allVehicles = propVehicles || [];
+    if (internalVehicle) allVehicles.push(internalVehicle); // Prioritize internal animation state
+    else if (propVehicle) allVehicles.push(propVehicle);
 
     useEffect(() => {
         if (destination && window.google) {
@@ -105,7 +109,7 @@ const MapComponent = ({ signals, vehicle: propVehicle, destination, onNavigation
     }
 
     return (
-        <LoadScript googleMapsApiKey={apiKey} libraries={['geometry']}>
+        <LoadScript googleMapsApiKey={apiKey} libraries={LIBRARIES}>
             <GoogleMap
                 mapContainerStyle={containerStyle}
                 center={center}
@@ -141,10 +145,11 @@ const MapComponent = ({ signals, vehicle: propVehicle, destination, onNavigation
                     />
                 )}
 
-                {/* Emergency Vehicle */}
-                {currentVehicle && (
+                {/* Emergency Vehicles */}
+                {allVehicles.map((v, i) => (
                     <Marker
-                        position={{ lat: currentVehicle.lat, lng: currentVehicle.lng }}
+                        key={v.id || i}
+                        position={{ lat: v.lat, lng: v.lng }}
                         icon={{
                             path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                             scale: 6,
@@ -152,11 +157,11 @@ const MapComponent = ({ signals, vehicle: propVehicle, destination, onNavigation
                             fillOpacity: 1,
                             strokeWeight: 2,
                             strokeColor: "#ffffff",
-                            rotation: currentVehicle.heading || 0,
+                            rotation: v.heading || 0,
                         }}
-                        title="Emergency Vehicle"
+                        title={`Ambulance ${v.id || ''}`}
                     />
-                )}
+                ))}
             </GoogleMap>
         </LoadScript>
     );

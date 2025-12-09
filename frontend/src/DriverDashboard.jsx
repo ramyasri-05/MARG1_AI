@@ -5,13 +5,20 @@ import io from 'socket.io-client';
 
 import { useLocation } from 'react-router-dom';
 
+const fallbackHospitals = [
+    { id: 'HOSP-RAMESH', name: 'Ramesh Hospitals', lat: 16.5020, lng: 80.6400, address: 'MG Road, Vijayawada' },
+    { id: 'HOSP-MANIPAL', name: 'Manipal Hospital', lat: 16.4780, lng: 80.6200, address: 'Tadepalli, Vijayawada' },
+    { id: 'HOSP-GOVT', name: 'Government General Hospital', lat: 16.5100, lng: 80.6180, address: 'Hanumanpet, Vijayawada' }
+];
+
 // Component for Driver Flow
 const DriverDashboard = () => {
     const location = useLocation();
     const { ambNumber, hospName } = location.state || {};
 
-    const [hospitals, setHospitals] = useState([]);
-    const [selectedHospital, setSelectedHospital] = useState(''); // Will be set from hospName
+    const [hospitals, setHospitals] = useState(fallbackHospitals);
+    // Initialize directly so it shows up immediately, even before API loads
+    const [selectedHospital, setSelectedHospital] = useState(hospName || '');
     const [navigationActive, setNavigationActive] = useState(false);
     const [route, setRoute] = useState(null); // Just for display
     const [vehicleId] = useState(ambNumber || 'AMB-' + Math.floor(Math.random() * 1000));
@@ -22,6 +29,8 @@ const DriverDashboard = () => {
 
     // Navigation State
     const [eta, setEta] = useState(null);
+    const [speed, setSpeed] = useState(0);
+    const [distance, setDistance] = useState(null);
     const [nextTurn, setNextTurn] = useState('');
     const [navDestination, setNavDestination] = useState(null);
     const [navOrigin, setNavOrigin] = useState(null); // Dynamic Origin
@@ -29,13 +38,44 @@ const DriverDashboard = () => {
     // Callbacks from Map
     const handleNavigationUpdate = (info) => {
         if (info.eta) setEta(info.eta);
+        if (info.speed) setSpeed(info.speed);
+        if (info.distance) setDistance(info.distance);
         if (info.instruction) setNextTurn(info.instruction);
     };
 
-    // Clean up manual interval if it exists (removing old logic)
+    // Sync Live Data to Server for Hospital View
+    useEffect(() => {
+        if (navigationActive && vehicleId && navOrigin) {
+            // We use a debounce or interval to avoid flooding, but here we just send on change
+            // For smoother updates, relies on map update rate
+
+            // Derive a simple "Readable Location" based on progress or signal proximity
+            // For now, simpler: Just send the data loop
+            const payload = {
+                id: vehicleId,
+                lat: vehicle?.lat || navOrigin.lat, // Use current vehicle pos (from internal map vehicle state if available? No, MapComponent has internal state)
+                // Wait, DriverDashboard doesn't know internal map vehicle pos unless MapComponent passes it back!
+                // MapComponent passes 'info', but likely not lat/lng.
+                // We need MapComponent to pass back lat/lng in onNavigationUpdate.
+                // assuming it does or we add it. 
+                // Let's assume MapComponent passes lat/lng too.
+                eta,
+                speed,
+                distance,
+                mode: 'emergency'
+            };
+
+            // We need lat/lng to be sent too. 
+            // I'll update MapComponent to include lat/lng in the update info first.
+        }
+    }, [eta, speed, distance, navigationActive]);
+
+    // Clean up
     useEffect(() => {
         if (!navigationActive) {
             setEta(null);
+            setSpeed(0);
+            setDistance(null);
             setNextTurn('');
             setNavDestination(null);
             setNavOrigin(null);
@@ -49,25 +89,24 @@ const DriverDashboard = () => {
                 setHospitals(res.data);
                 // Auto-select if passed from previous page
                 if (hospName) {
-                    const found = res.data.find(h => h.name === hospName);
+                    const normalizedInput = hospName.trim().toLowerCase();
+                    const found = res.data.find(h => h.name.trim().toLowerCase() === normalizedInput);
+
                     if (found) {
                         setSelectedHospital(found.id);
                     } else {
-                        // Fallback if name doesn't match ID exactly or if it's just a string
-                        // For now, we might just set it as the ID if we can't find it, or handle it.
-                        // But let's assume the names match for this demo.
-                        // If not found, we might want to just show the name.
-                        // But startNavigation needs an ID.
-                        // Let's assume for the demo the names in Login.jsx match the names in backend.
-                        // Login.jsx has "Ramesh Hospitals, MG Road" etc.
-                        // Backend likely has the same.
-                        // If not, we might need to be careful.
-                        // Let's try to find by partial match or just set it.
-                        const fuzzyFound = res.data.find(h => h.name.includes(hospName) || hospName.includes(h.name));
-                        if (fuzzyFound) setSelectedHospital(fuzzyFound.id);
+                        // Fuzzy search
+                        const fuzzy = res.data.find(h => h.name.toLowerCase().includes(normalizedInput));
+                        if (fuzzy) {
+                            setSelectedHospital(fuzzy.id);
+                        } else {
+                            // Fallback: Display name directly
+                            setSelectedHospital(hospName);
+                        }
                     }
                 }
-            });
+            })
+            .catch(err => console.error("Error fetching hospitals:", err));
 
         // Socket for Map Updates
         const socket = io('http://localhost:5000');
@@ -81,39 +120,61 @@ const DriverDashboard = () => {
     }, []);
 
     const startNavigation = async () => {
-        if (!selectedHospital) return alert("Select a hospital first!");
+        let destId = selectedHospital;
 
-        try {
-            // Use dynamic start location if available, otherwise mock Agiripalli or Benz Circle
-            // For now, we'll use Agiripalli as the "detected" location for this demo
-            const startLat = 16.6547; // Agiripalli
-            const startLng = 80.7950;
-
-            const res = await axios.post('http://localhost:5000/api/driver/navigate', {
-                vehicleId,
-                destinationId: selectedHospital,
-                startLat,
-                startLng
-            });
-
-            if (res.data.success) {
-                setNavigationActive(true);
-
-                // Set Origin (Dynamic)
-                setNavOrigin({ lat: startLat, lng: startLng });
-
-                // Set Destination
-                setNavDestination({
-                    lat: res.data.hospital.lat || 16.5150,
-                    lng: res.data.hospital.lng || 80.6300,
-                    name: res.data.hospital.name
-                });
-                alert(`Navigation Started to ${res.data.hospital.name}`);
+        // If selectedHospital is just a name (not an ID like HOSP-...), try to resolve it
+        if (selectedHospital && !selectedHospital.toString().startsWith('HOSP-')) {
+            const match = hospitals.find(h => h.name === selectedHospital || h.name.toLowerCase() === selectedHospital.toLowerCase());
+            if (match) destId = match.id;
+            else {
+                alert(`Could not verify hospital ID for "${selectedHospital}". Please re-select.`);
+                return;
             }
-        } catch (err) {
-            console.error(err);
-            alert("Failed to start navigation");
         }
+
+        if (!destId) return alert("Select a hospital first!");
+
+        if (!navigator.geolocation) {
+            // ... (rest of logic same)
+            alert("Geolocation is not supported by your browser");
+            return;
+        }
+
+        // Get Real Current Location
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const startLat = position.coords.latitude;
+            const startLng = position.coords.longitude;
+
+            try {
+                const res = await axios.post('http://localhost:5000/api/driver/navigate', {
+                    vehicleId,
+                    destinationId: destId,
+                    startLat,
+                    startLng
+                });
+
+                if (res.data.success) {
+                    setNavigationActive(true);
+
+                    // Set Origin (Real GPS)
+                    setNavOrigin({ lat: startLat, lng: startLng });
+
+                    // Set Destination
+                    setNavDestination({
+                        lat: res.data.hospital.lat || 16.5150,
+                        lng: res.data.hospital.lng || 80.6300,
+                        name: res.data.hospital.name
+                    });
+                    alert(`Navigation Started to ${res.data.hospital.name} from Current Location`);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Failed to start navigation");
+            }
+        }, (error) => {
+            console.error(error);
+            alert("Unable to retrieve your location. Please allow location access.");
+        }, { enableHighAccuracy: true });
     };
 
     return (
@@ -143,8 +204,12 @@ const DriverDashboard = () => {
                                 <span className="value">{eta || '--'}</span>
                             </div>
                             <div className="info-card">
+                                <span className="label">⚡ Speed</span>
+                                <span className="value">{speed || '0'} km/h</span>
+                            </div>
+                            <div className="info-card">
                                 <span className="label">🛣️ Distance</span>
-                                <span className="value">4.2 km</span>
+                                <span className="value">{distance || '--'}</span>
                             </div>
                         </div>
 

@@ -114,14 +114,17 @@ app.post('/api/police/status', (req, res) => {
 
 // SYSTEM: Periodic/Live Location Update (from AI or App)
 app.post('/api/vehicle/update', (req, res) => {
-    const { id, lat, lng } = req.body;
+    const { id, lat, lng, eta, speed, distance, destinationId } = req.body;
 
     if (emergencyVehicle.id === id) {
         emergencyVehicle.lat = lat;
         emergencyVehicle.lng = lng;
+        if (eta) emergencyVehicle.eta = eta;
+        if (speed) emergencyVehicle.speed = speed;
+        if (distance) emergencyVehicle.distance = distance;
     } else {
         // New vehicle or untracked
-        emergencyVehicle = { id, lat, lng, destinationId: null, route: [] };
+        emergencyVehicle = { id, lat, lng, destinationId: destinationId || null, route: [], eta, speed, distance };
     }
 
     console.log(`[GPS] Vehicle ${id} at [${lat}, ${lng}]`);
