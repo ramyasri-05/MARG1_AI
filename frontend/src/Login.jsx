@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import './Login.css';
 
 const Login = () => {
     const navigate = useNavigate();
-    // Default to FALSE: Only Title shown initially.
-    const [showRoles, setShowRoles] = useState(false);
-    const [showLoginForm, setShowLoginForm] = useState(false);
-    const [showSignupForm, setShowSignupForm] = useState(false);
-    const [showDriverForm, setShowDriverForm] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Derived state from URL params
+    const view = searchParams.get('view'); // 'login', 'signup', 'roles', 'driver_details' or null
+
+    const showRoles = !!view;
+    const showLoginForm = view === 'login';
+    const showSignupForm = view === 'signup';
+    const showDriverForm = view === 'driver_details';
+
     const [ambNumber, setAmbNumber] = useState('');
     const [hospName, setHospName] = useState('');
 
@@ -33,18 +38,31 @@ const Login = () => {
     };
 
     const handleLoginClick = () => {
-        // Show Login Form, Hide others
-        setShowLoginForm(true);
-        setShowSignupForm(false);
-        setShowRoles(true); // Open the card
-        setShowDriverForm(false);
+        setSearchParams({ view: 'login' });
     };
 
     const handleSignupClick = () => {
-        setShowSignupForm(true);
-        setShowLoginForm(false);
-        setShowRoles(true);
-        setShowDriverForm(false);
+        setSearchParams({ view: 'signup' });
+    };
+
+    const handleSignupSubmit = () => {
+        if (!hospName || hospName === "Select Hospital") {
+            // Reuse hospName as 'selectedRole' for signup context
+            alert("Please select a Role!");
+            return;
+        }
+        // Save Mock User
+        localStorage.setItem('margUserRole', hospName);
+        alert("Account Created Successfully! Please Login.");
+        setSearchParams({ view: 'login' });
+    };
+
+    const handleLoginSubmit = () => {
+        // Mock Validation
+        // In a real app, we'd check credentials here.
+
+        // Instead of auto-redirecting, just go to Role Selection
+        setSearchParams({ view: 'roles' });
     };
 
     return (
@@ -93,7 +111,7 @@ const Login = () => {
                                     Submit & Start 🚀
                                 </button>
                             </div>
-                            <button className="back-btn" onClick={() => setShowDriverForm(false)}>⬅ Back</button>
+                            <button className="back-btn" onClick={() => setSearchParams({ view: 'roles' })}>⬅ Back</button>
                         </div>
                     ) : showLoginForm ? (
                         <div className="role-selection fade-in">
@@ -109,7 +127,7 @@ const Login = () => {
                                     placeholder="Password"
                                     className="login-input"
                                 />
-                                <button className="role-btn login-submit-btn" onClick={() => setShowLoginForm(false)}>
+                                <button className="role-btn login-submit-btn" onClick={handleLoginSubmit}>
                                     Login
                                 </button>
 
@@ -117,7 +135,14 @@ const Login = () => {
                                     <span>OR</span>
                                 </div>
 
-                                <button className="google-btn">
+                                <button className="google-btn" onClick={() => {
+                                    alert("🔵 Mock Google Login\n\nSimulating authentication with Google...");
+                                    localStorage.setItem('margUserRole', 'driver'); // Defaulting to Driver for demo
+                                    setTimeout(() => {
+                                        alert("Login Successful! Redirecting to Driver Dashboard...");
+                                        navigate('/driver');
+                                    }, 1000);
+                                }}>
                                     <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="20" />
                                     <span>Continue with Google</span>
                                 </button>
@@ -125,7 +150,7 @@ const Login = () => {
 
 
                             <p className="signup-link">
-                                Don't have an account? <span onClick={() => { setShowLoginForm(false); setShowSignupForm(true); }}>Sign Up</span>
+                                Don't have an account? <span onClick={() => setSearchParams({ view: 'signup' })}>Sign Up</span>
                             </p>
                         </div>
                     ) : showSignupForm ? (
@@ -156,19 +181,19 @@ const Login = () => {
                                     >🛡️ Admin</button>
                                 </div>
 
-                                <button className="role-btn login-submit-btn" onClick={() => alert("Account Created! (Mock)")}>
+                                <button className="role-btn login-submit-btn" onClick={handleSignupSubmit}>
                                     Sign Up
                                 </button>
                             </div>
                             <p className="signup-link">
-                                Already have an account? <span onClick={() => { setShowSignupForm(false); setShowLoginForm(true); }}>Login</span>
+                                Already have an account? <span onClick={() => setSearchParams({ view: 'login' })}>Login</span>
                             </p>
                         </div>
                     ) : (
                         <div className="role-selection fade-in">
                             <h3>Select Your Role</h3>
                             <div className="role-buttons">
-                                <button className="role-btn driver" onClick={() => setShowDriverForm(true)}>
+                                <button className="role-btn driver" onClick={() => setSearchParams({ view: 'driver_details' })}>
                                     <span className="icon">🚑</span>
                                     <span className="text">Driver</span>
                                 </button>
@@ -185,7 +210,7 @@ const Login = () => {
                                     <span className="text">System Admin</span>
                                 </button>
                             </div>
-                            <button className="back-btn" onClick={() => setShowRoles(false)}>⬅ Back</button>
+                            <button className="back-btn" onClick={() => setSearchParams({})}>⬅ Back</button>
                         </div>
                     )}
 
