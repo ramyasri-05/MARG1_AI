@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import MapComponent from './MapComponent';
 import io from 'socket.io-client';
-
 import { useLocation } from 'react-router-dom';
+import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
+
+const libraries = ['places', 'geometry'];
 
 const fallbackHospitals = [
     { id: 'HOSP-RAMESH', name: 'Ramesh Hospitals', lat: 16.5020, lng: 80.6400, address: 'MG Road, Vijayawada' },
@@ -16,24 +18,32 @@ const DriverDashboard = () => {
     const location = useLocation();
     const { ambNumber, hospName } = location.state || {};
 
+    // Google Maps Script Loader
+    const { isLoaded, loadError } = useJsApiLoader({
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+        libraries: libraries
+    });
+
+    if (loadError) return <div className="error-screen">Error Loading Maps: {loadError.message}</div>;
+
     const [hospitals, setHospitals] = useState(fallbackHospitals);
-    // Initialize directly so it shows up immediately, even before API loads
     const [selectedHospital, setSelectedHospital] = useState(hospName || '');
     const [navigationActive, setNavigationActive] = useState(false);
-    const [route, setRoute] = useState(null); // Just for display
+    // vehicleId is kept constant for the session
     const [vehicleId] = useState(ambNumber || 'AMB-' + Math.floor(Math.random() * 1000));
 
-    // Map State
+    // Map & Nav State
     const [signals, setSignals] = useState([]);
     const [vehicle, setVehicle] = useState(null);
-
-    // Navigation State
     const [eta, setEta] = useState(null);
     const [speed, setSpeed] = useState(0);
     const [distance, setDistance] = useState(null);
     const [nextTurn, setNextTurn] = useState('');
     const [navDestination, setNavDestination] = useState(null);
-    const [navOrigin, setNavOrigin] = useState(null); // Dynamic Origin
+    const [navOrigin, setNavOrigin] = useState(null);
+
+    // Autocomplete Reference
+    const autocompleteRef = useRef(null);
 
     // Callbacks from Map
     const handleNavigationUpdate = (info) => {
@@ -43,34 +53,14 @@ const DriverDashboard = () => {
         if (info.instruction) setNextTurn(info.instruction);
     };
 
-    // Sync Live Data to Server for Hospital View
+    // Sync Live Data
     useEffect(() => {
         if (navigationActive && vehicleId && navOrigin) {
-            // We use a debounce or interval to avoid flooding, but here we just send on change
-            // For smoother updates, relies on map update rate
-
-            // Derive a simple "Readable Location" based on progress or signal proximity
-            // For now, simpler: Just send the data loop
-            const payload = {
-                id: vehicleId,
-                lat: vehicle?.lat || navOrigin.lat, // Use current vehicle pos (from internal map vehicle state if available? No, MapComponent has internal state)
-                // Wait, DriverDashboard doesn't know internal map vehicle pos unless MapComponent passes it back!
-                // MapComponent passes 'info', but likely not lat/lng.
-                // We need MapComponent to pass back lat/lng in onNavigationUpdate.
-                // assuming it does or we add it. 
-                // Let's assume MapComponent passes lat/lng too.
-                eta,
-                speed,
-                distance,
-                mode: 'emergency'
-            };
-
-            // We need lat/lng to be sent too. 
-            // I'll update MapComponent to include lat/lng in the update info first.
+            // In a real app, this would emit socket events with location
         }
     }, [eta, speed, distance, navigationActive]);
 
-    // Clean up
+    // Clean up nav state
     useEffect(() => {
         if (!navigationActive) {
             setEta(null);
@@ -82,28 +72,27 @@ const DriverDashboard = () => {
         }
     }, [navigationActive]);
 
+    // Initial Data Fetch
     useEffect(() => {
+        // Get Initial Location
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((position) => {
+                setNavOrigin({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                });
+            }, (err) => console.error("Location access denied or error:", err));
+        }
+
         // Fetch Hospitals
         axios.get('http://localhost:5000/api/hospitals')
             .then(res => {
                 setHospitals(res.data);
-                // Auto-select if passed from previous page
                 if (hospName) {
                     const normalizedInput = hospName.trim().toLowerCase();
                     const found = res.data.find(h => h.name.trim().toLowerCase() === normalizedInput);
-
-                    if (found) {
-                        setSelectedHospital(found.id);
-                    } else {
-                        // Fuzzy search
-                        const fuzzy = res.data.find(h => h.name.toLowerCase().includes(normalizedInput));
-                        if (fuzzy) {
-                            setSelectedHospital(fuzzy.id);
-                        } else {
-                            // Fallback: Display name directly
-                            setSelectedHospital(hospName);
-                        }
-                    }
+                    if (found) setSelectedHospital(found.id);
+                    else setSelectedHospital(hospName);
                 }
             })
             .catch(err => console.error("Error fetching hospitals:", err));
@@ -113,29 +102,62 @@ const DriverDashboard = () => {
         socket.on('signals-update', setSignals);
         socket.on('vehicle-update', setVehicle);
 
-        // Initial Signal Fetch
         axios.get('http://localhost:5000/api/signals').then(res => setSignals(res.data));
 
         return () => socket.disconnect();
     }, []);
 
+    // Effect: Update Map Destination Preview when selection changes
+    useEffect(() => {
+        if (!selectedHospital) return;
+
+        const hospitalObj = hospitals.find(h => h.id === selectedHospital);
+        if (hospitalObj) {
+            setNavDestination({
+                lat: hospitalObj.lat,
+                lng: hospitalObj.lng,
+                name: hospitalObj.name
+            });
+        }
+    }, [selectedHospital, hospitals]);
+
+    // Handle Google Places Autocomplete Selection
+    const onPlaceChanged = () => {
+        if (autocompleteRef.current !== null) {
+            const place = autocompleteRef.current.getPlace();
+
+            if (!place.geometry || !place.geometry.location) {
+                console.log("Returned place contains no geometry");
+                return;
+            }
+
+            const newHospital = {
+                id: place.place_id,
+                name: place.name,
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng(),
+                address: place.formatted_address
+            };
+
+            // Add to list and select it
+            setHospitals(prev => {
+                // Avoid duplicates
+                if (prev.find(h => h.id === newHospital.id)) return prev;
+                return [...prev, newHospital];
+            });
+            setSelectedHospital(newHospital.id);
+        }
+    };
+
     const startNavigation = async () => {
         let destId = selectedHospital;
 
-        // If selectedHospital is just a name (not an ID like HOSP-...), try to resolve it
-        if (selectedHospital && !selectedHospital.toString().startsWith('HOSP-')) {
-            const match = hospitals.find(h => h.name === selectedHospital || h.name.toLowerCase() === selectedHospital.toLowerCase());
-            if (match) destId = match.id;
-            else {
-                alert(`Could not verify hospital ID for "${selectedHospital}". Please re-select.`);
-                return;
-            }
-        }
+        // Find the selected hospital object
+        const hospitalObj = hospitals.find(h => h.id === destId);
 
-        if (!destId) return alert("Select a hospital first!");
+        if (!hospitalObj) return alert("Select a hospital first!");
 
         if (!navigator.geolocation) {
-            // ... (rest of logic same)
             alert("Geolocation is not supported by your browser");
             return;
         }
@@ -146,27 +168,28 @@ const DriverDashboard = () => {
             const startLng = position.coords.longitude;
 
             try {
-                const res = await axios.post('http://localhost:5000/api/driver/navigate', {
-                    vehicleId,
-                    destinationId: destId,
-                    startLat,
-                    startLng
+                // If it's a Google Place (custom added), we might not need to hit the backend /navigate 
+                // if the backend expects specific IDs. 
+                // But for now, we'll try sending it. If backend fails finding ID, we handle it.
+                // Actually, backend looks up ID in its OWN list.
+                // FIX: If it's a new place, we can't rely on backend ID lookup.
+                // We should pass the LAT/LNG directly to backend or just use frontend state.
+
+                // For this hybrid approach, let's just use the frontend state for the destination
+                // and notify backend about the vehicle status.
+
+                setNavigationActive(true);
+                setNavOrigin({ lat: startLat, lng: startLng });
+                setNavDestination({
+                    lat: hospitalObj.lat,
+                    lng: hospitalObj.lng,
+                    name: hospitalObj.name
                 });
 
-                if (res.data.success) {
-                    setNavigationActive(true);
+                // Notify Backend (Optional - creating a new endpoint or reusing update)
+                // For now, we just start the visual navigation
+                alert(`Navigation Started to ${hospitalObj.name}`);
 
-                    // Set Origin (Real GPS)
-                    setNavOrigin({ lat: startLat, lng: startLng });
-
-                    // Set Destination
-                    setNavDestination({
-                        lat: res.data.hospital.lat || 16.5150,
-                        lng: res.data.hospital.lng || 80.6300,
-                        name: res.data.hospital.name
-                    });
-                    alert(`Navigation Started to ${res.data.hospital.name} from Current Location`);
-                }
             } catch (err) {
                 console.error(err);
                 alert("Failed to start navigation");
@@ -177,18 +200,80 @@ const DriverDashboard = () => {
         }, { enableHighAccuracy: true });
     };
 
+    if (!isLoaded) return <div className="loading-screen">Loading Maps...</div>;
+
     return (
         <div className="dashboard-container">
             <div className="control-panel">
                 <h2>🚑 Driver Console</h2>
-                <div className="vehicle-id">ID: <strong>{vehicleId}</strong></div>
+                {!navigationActive && (
+                    <div className="vehicle-id">ID: <strong>{vehicleId}</strong></div>
+                )}
 
                 {!navigationActive ? (
                     <div className="selection-box">
-                        <label>Destination:</label>
-                        <div className="selected-hospital-display">
-                            🏥 {hospitals.find(h => h.id === selectedHospital)?.name || selectedHospital || "No Hospital Selected"}
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>Ambulance ID:</label>
+                            <input
+                                type="text"
+                                className="dashboard-input" // Reusing or adding class
+                                style={{
+                                    width: '100%', padding: '10px', borderRadius: '8px',
+                                    border: '1px solid #444', background: '#222', color: 'white', fontWeight: 'bold'
+                                }}
+                                value={vehicleId}
+                                readOnly
+                            />
                         </div>
+
+                        {/* GOOGLE PLACES SEARCH */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>🔎 Search Hospital:</label>
+                            <Autocomplete
+                                onLoad={ref => autocompleteRef.current = ref}
+                                onPlaceChanged={onPlaceChanged}
+                                fields={['place_id', 'geometry', 'name', 'formatted_address']}
+                                options={{
+                                    types: ['hospital', 'health', 'doctor'], // Restrict to relevant places
+                                    componentRestrictions: { country: "in" } // Optional: restrict to India if needed
+                                }}
+                            >
+                                <input
+                                    type="text"
+                                    placeholder="Type hospital name..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #444',
+                                        background: '#333',
+                                        color: '#fff'
+                                    }}
+                                />
+                            </Autocomplete>
+                        </div>
+
+                        <div style={{ marginBottom: '15px', textAlign: 'center', opacity: 0.7 }}>
+                            <span>- OR -</span>
+                        </div>
+
+                        <label style={{ display: 'block', marginBottom: '5px' }}>Select from List:</label>
+                        <select
+                            style={{
+                                width: '100%', padding: '10px', marginBottom: '15px',
+                                borderRadius: '8px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '1rem'
+                            }}
+                            value={selectedHospital}
+                            onChange={(e) => setSelectedHospital(e.target.value)}
+                        >
+                            <option value="">-- Select Hospital --</option>
+                            {hospitals.map((h, i) => (
+                                <option key={h.id || i} value={h.id}>
+                                    🏥 {h.name}
+                                </option>
+                            ))}
+                        </select>
+
                         <button className="nav-btn" onClick={startNavigation}>
                             START NAVIGATION ➡️
                         </button>
@@ -196,7 +281,7 @@ const DriverDashboard = () => {
                 ) : (
                     <div className="navigation-status">
                         <h3 className="blink">NAVIGATING...</h3>
-                        <p>Destination: <strong>{hospitals.find(h => h.id === selectedHospital)?.name}</strong></p>
+                        <p>Destination: <strong>{hospitals.find(h => h.id === selectedHospital)?.name || "Unknown"}</strong></p>
 
                         <div className="live-info">
                             <div className="info-card">
@@ -229,15 +314,14 @@ const DriverDashboard = () => {
             </div>
 
             <div className="map-view">
-                <div className="map-view">
-                    <MapComponent
-                        signals={signals}
-                        vehicle={vehicle}
-                        origin={navOrigin}
-                        destination={navDestination}
-                        onNavigationUpdate={handleNavigationUpdate}
-                    />
-                </div>
+                <MapComponent
+                    manualLoad={true}
+                    signals={signals}
+                    vehicle={vehicle}
+                    origin={navOrigin}
+                    destination={navDestination}
+                    onNavigationUpdate={handleNavigationUpdate}
+                />
             </div>
         </div>
     );

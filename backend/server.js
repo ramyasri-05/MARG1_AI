@@ -4,6 +4,7 @@ const http = require('http');
 const mongoose = require('mongoose'); // Add Mongoose
 const { Server } = require('socket.io');
 const cors = require('cors');
+const mongoose = require('mongoose');
 
 const app = express();
 app.use(cors());
@@ -75,6 +76,7 @@ function deg2rad(deg) {
     return deg * (Math.PI / 180)
 }
 
+<<<<<<< HEAD
 // --- MONGODB MODELS ---
 const UserSchema = new mongoose.Schema({
     name: String,
@@ -122,10 +124,57 @@ app.post('/api/auth/signup', async (req, res) => {
 });
 
 // LOGIN
+=======
+// --- DATABASE CONNECTION ---
+const MONGO_URI = "mongodb+srv://vanamalisoulapurapu_db_user:Vanamali%402006@cluster0.jju9eqc.mongodb.net/marg_ai_db?retryWrites=true&w=majority&appName=Cluster0";
+
+mongoose.connect(MONGO_URI)
+    .then(() => console.log('✅ MongoDB Connected'))
+    .catch(err => console.error('❌ MongoDB Connection Error:', err));
+
+// --- USER MODEL ---
+const userSchema = new mongoose.Schema({
+    fullName: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true }, // In real app, hash this!
+    role: { type: String, required: true, enum: ['driver', 'police', 'hospital', 'admin'] }
+});
+
+const User = mongoose.model('User', userSchema);
+
+// --- AUTH ROUTES ---
+
+// AUTH: Signup
+app.post('/api/auth/signup', async (req, res) => {
+    const { fullName, email, password, role } = req.body;
+    if (!fullName || !email || !password || !role) {
+        return res.status(400).json({ error: "All fields are required" });
+    }
+
+    try {
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists" });
+        }
+
+        const newUser = new User({ fullName, email, password, role });
+        await newUser.save();
+
+        console.log(`[AUTH] New User Signed Up: ${email} (${role})`);
+        res.json({ success: true, message: "Account created successfully" });
+    } catch (err) {
+        console.error("Signup Error:", err);
+        res.status(500).json({ error: "Server Error during signup" });
+    }
+});
+
+// AUTH: Login
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
     try {
+<<<<<<< HEAD
         // 1. Try MongoDB
         if (mongoose.connection.readyState === 1) {
             const user = await User.findOne({ email });
@@ -147,6 +196,21 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Try finding in DB even if connection state was flaky, or return error
     res.status(401).json({ error: "Invalid Credentials" });
+=======
+        const user = await User.findOne({ email });
+
+        // Simple password check (visual prototype only)
+        if (!user || user.password !== password) {
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        console.log(`[AUTH] Login Success: ${email} -> ${user.role}`);
+        res.json({ success: true, role: user.role, name: user.fullName });
+    } catch (err) {
+        console.error("Login Error:", err);
+        res.status(500).json({ error: "Server Error during login" });
+    }
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
 });
 
 // --- API ENDPOINTS ---
@@ -162,11 +226,24 @@ app.get('/api/hospitals', (req, res) => {
 
 // DRIVER: Start Navigation
 app.post('/api/driver/navigate', (req, res) => {
-    const { vehicleId, destinationId, startLat, startLng } = req.body;
+    const { vehicleId, destinationId, startLat, startLng, destinationName, destinationLat, destinationLng } = req.body;
 
-    // Find Destination Hospital
-    const hospital = hospitals.find(h => h.id === destinationId);
-    if (!hospital) return res.status(404).json({ error: "Hospital not found" });
+    let hospital = hospitals.find(h => h.id === destinationId);
+
+    // If not found in static list, check if dynamic data was passed
+    if (!hospital) {
+        if (destinationLat && destinationLng) {
+            hospital = {
+                id: destinationId,
+                name: destinationName || "Unknown Hospital",
+                lat: destinationLat,
+                lng: destinationLng,
+                address: "Custom Location"
+            };
+        } else {
+            return res.status(404).json({ error: "Hospital not found" });
+        }
+    }
 
     // Mock Route Generation (Simple straight line points for now, or just return dest)
     // In a real app, we'd use Google Maps Directions API here.

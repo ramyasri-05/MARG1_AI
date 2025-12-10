@@ -1,20 +1,29 @@
+<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios'; // Import axios
+=======
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
 import './Login.css';
 
 const Login = () => {
     const navigate = useNavigate();
-    const [searchParams, setSearchParams] = useSearchParams();
 
-    // Derived state from URL params
-    const view = searchParams.get('view'); // 'login', 'signup', 'roles', 'driver_details' or null
+    // State to toggle between Login and Signup views
+    // Default to 'login' as per "The flow should be clean, fast"
+    const [view, setView] = useState('login');
 
-    const showRoles = !!view;
-    const showLoginForm = view === 'login';
-    const showSignupForm = view === 'signup';
-    const showDriverForm = view === 'driver_details';
+    // Form States
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [fullName, setFullName] = useState('');
+    const [role, setRole] = useState(''); // Only for Signup
+    const [isLoading, setIsLoading] = useState(false);
 
+<<<<<<< HEAD
     // Form States
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -23,23 +32,40 @@ const Login = () => {
 
     const [ambNumber, setAmbNumber] = useState('');
     const [hospName, setHospName] = useState('');
+=======
+    const API_URL = 'http://localhost:5000/api/auth';
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
 
-    const vijayawadaHospitals = [
-        "Select Hospital",
-        "Ramesh Hospitals",
-        "Manipal Hospital",
-        "Government General Hospital"
-    ];
-
-    const handleDriverLogin = () => {
-        if (!ambNumber || !hospName || hospName === "Select Hospital") {
-            alert("Please enter Ambulance Number and Hospital Name!");
+    const handleLoginSubmit = async () => {
+        if (!email || !password) {
+            alert("Please enter both email and password.");
             return;
         }
-        // Navigate to dashboard with state (optional) or just go
-        navigate('/driver', { state: { ambNumber, hospName } });
+
+        setIsLoading(true);
+        try {
+            const res = await axios.post(`${API_URL}/login`, { email, password });
+            if (res.data.success) {
+                const userRole = res.data.role;
+                // alert(`Welcome back, ${res.data.name}!`); // Optional welcome
+
+                // Redirect based on role
+                switch (userRole) {
+                    case 'driver': navigate('/driver'); break;
+                    case 'police': navigate('/police'); break;
+                    case 'hospital': navigate('/hospital'); break;
+                    case 'admin': navigate('/admin'); break;
+                    default: alert("Unknown role");
+                }
+            }
+        } catch (err) {
+            alert(err.response?.data?.error || "Login Failed");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
+<<<<<<< HEAD
     const handleLoginClick = () => {
         setSearchParams({ view: 'login' });
     };
@@ -101,58 +127,44 @@ const Login = () => {
         } catch (err) {
             console.error(err);
             alert("Invalid Credentials");
+=======
+    const handleSignupSubmit = async () => {
+        if (!fullName || !email || !password || !role) {
+            alert("Please fill in all fields and select a role.");
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const res = await axios.post(`${API_URL}/signup`, { fullName, email, password, role });
+            if (res.data.success) {
+                alert("Account created successfully! Please Login.");
+                setView('login');
+                // Reset form slightly
+                setPassword('');
+                setRole('');
+            }
+        } catch (err) {
+            alert(err.response?.data?.error || "Signup Failed");
+        } finally {
+            setIsLoading(false);
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
         }
     };
 
     return (
         <div className="login-container">
             <div className="login-overlay">
-                {!showRoles && (
-                    <div className="top-nav">
-                        <button className="nav-btn" onClick={handleLoginClick}>Login</button>
-                        <button className="nav-btn signup" onClick={handleSignupClick}>Sign Up</button>
-                    </div>
-                )}
-                <div className={`login-card ${showRoles ? 'expanded' : 'transparent-card'}`}>
+
+                <div className="login-card expanded">
                     <div className="logo-section">
                         <h1>MARG-AI</h1>
                         <p className="caption">Intelligent Traffic Clearance System</p>
                         <p className="sub-caption">"Saving Lives, One Green Light at a Time"</p>
                     </div>
 
-                    {!showRoles ? (
-                        <>
-                            {/* Empty State: Just Title and Layout */}
-                        </>
-                    ) : showDriverForm ? (
-                        <div className="role-selection fade-in">
-                            <h3>🚑 Ambulance Details</h3>
-                            <div className="driver-form">
-                                <input
-                                    type="text"
-                                    placeholder="Ambulance Number (e.g., AP16-1234)"
-                                    className="login-input"
-                                    value={ambNumber}
-                                    onChange={(e) => setAmbNumber(e.target.value)}
-                                />
-                                <select
-                                    className="login-input"
-                                    value={hospName}
-                                    onChange={(e) => setHospName(e.target.value)}
-                                >
-                                    {vijayawadaHospitals.map((hosp, index) => (
-                                        <option key={index} value={hosp === "Select Hospital" ? "" : hosp} style={{ color: 'black' }}>
-                                            {hosp}
-                                        </option>
-                                    ))}
-                                </select>
-                                <button className="role-btn driver" onClick={handleDriverLogin}>
-                                    Submit & Start 🚀
-                                </button>
-                            </div>
-                            <button className="back-btn" onClick={() => setSearchParams({ view: 'roles' })}>⬅ Back</button>
-                        </div>
-                    ) : showLoginForm ? (
+                    {view === 'login' ? (
+                        /* LOGIN VIEW */
                         <div className="role-selection fade-in">
                             <h3>👋 Welcome Back</h3>
                             <div className="driver-form">
@@ -170,33 +182,29 @@ const Login = () => {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
-                                <button className="role-btn login-submit-btn" onClick={handleLoginSubmit}>
-                                    Login
+                                <button
+                                    className="role-btn login-submit-btn"
+                                    onClick={handleLoginSubmit}
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? 'Logging in...' : 'Login'}
                                 </button>
 
                                 <div className="divider">
                                     <span>OR</span>
                                 </div>
 
-                                <button className="google-btn" onClick={() => {
-                                    alert("🔵 Mock Google Login\n\nSimulating authentication with Google...");
-                                    localStorage.setItem('margUserRole', 'driver'); // Defaulting to Driver for demo
-                                    setTimeout(() => {
-                                        alert("Login Successful! Please select your role.");
-                                        setSearchParams({ view: 'roles' });
-                                    }, 1000);
-                                }}>
-                                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="20" />
-                                    <span>Continue with Google</span>
-                                </button>
+                                <p className="signup-link">
+                                    Don't have an account? <span onClick={() => {
+                                        setView('signup');
+                                        setEmail('');
+                                        setPassword('');
+                                    }}>Create Account</span>
+                                </p>
                             </div>
-
-
-                            <p className="signup-link">
-                                Don't have an account? <span onClick={() => setSearchParams({ view: 'signup' })}>Sign Up</span>
-                            </p>
                         </div>
-                    ) : showSignupForm ? (
+                    ) : (
+                        /* SIGNUP VIEW */
                         <div className="role-selection fade-in">
                             <h3>🚀 Create Account</h3>
                             <div className="driver-form">
@@ -204,8 +212,13 @@ const Login = () => {
                                     type="text"
                                     placeholder="Full Name"
                                     className="login-input"
+<<<<<<< HEAD
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
+=======
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
                                 />
                                 <input
                                     type="email"
@@ -222,9 +235,11 @@ const Login = () => {
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
 
-                                {/* Replaced Dropdown with Selection Grid */}
+                                {/* Role Selection Grid from previous CSS */}
+                                <label style={{ textAlign: 'left', color: '#ccc', fontSize: '0.9rem', marginBottom: '-10px' }}>Select Role:</label>
                                 <div className="role-grid-input">
                                     <button
+<<<<<<< HEAD
                                         className={`mini-role-btn ${selectedRole === 'Driver' ? 'selected' : ''}`}
                                         onClick={() => setSelectedRole('Driver')}
                                     >🚑 Driver</button>
@@ -239,46 +254,41 @@ const Login = () => {
                                     <button
                                         className={`mini-role-btn ${selectedRole === 'Admin' ? 'selected' : ''}`}
                                         onClick={() => setSelectedRole('Admin')}
+=======
+                                        className={`mini-role-btn ${role === 'driver' ? 'selected' : ''}`}
+                                        onClick={() => setRole('driver')}
+                                    >🚑 Driver</button>
+                                    <button
+                                        className={`mini-role-btn ${role === 'police' ? 'selected' : ''}`}
+                                        onClick={() => setRole('police')}
+                                    >👮 Police</button>
+                                    <button
+                                        className={`mini-role-btn ${role === 'hospital' ? 'selected' : ''}`}
+                                        onClick={() => setRole('hospital')}
+                                    >🏥 Hospital</button>
+                                    <button
+                                        className={`mini-role-btn ${role === 'admin' ? 'selected' : ''}`}
+                                        onClick={() => setRole('admin')}
+>>>>>>> 427d256fcba396027a090d41b189024db37aadf9
                                     >🛡️ Admin</button>
                                 </div>
 
-                                <button className="role-btn login-submit-btn" onClick={handleSignupSubmit}>
-                                    Sign Up
+                                <button
+                                    className="role-btn login-submit-btn"
+                                    onClick={handleSignupSubmit}
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? 'Creating...' : 'Sign Up'}
                                 </button>
                             </div>
                             <p className="signup-link">
-                                Already have an account? <span onClick={() => setSearchParams({ view: 'login' })}>Login</span>
+                                Already have an account? <span onClick={() => setView('login')}>Login</span>
                             </p>
                         </div>
-                    ) : (
-                        <div className="role-selection fade-in">
-                            <h3>Select Your Role</h3>
-                            <div className="role-buttons">
-                                <button className="role-btn driver" onClick={() => setSearchParams({ view: 'driver_details' })}>
-                                    <span className="icon">🚑</span>
-                                    <span className="text">Driver</span>
-                                </button>
-                                <button className="role-btn police" onClick={() => navigate('/police')}>
-                                    <span className="icon">👮</span>
-                                    <span className="text">Traffic Police</span>
-                                </button>
-                                <button className="role-btn hospital" onClick={() => navigate('/hospital')}>
-                                    <span className="icon">🏥</span>
-                                    <span className="text">Hospital Staff</span>
-                                </button>
-                                <button className="role-btn admin" onClick={() => navigate('/admin')}>
-                                    <span className="icon">🛡️</span>
-                                    <span className="text">System Admin</span>
-                                </button>
-                            </div>
-                            <button className="back-btn" onClick={() => setSearchParams({})}>⬅ Back</button>
-                        </div>
                     )}
-
-                    <div className="footer-links"></div>
                 </div>
             </div>
-        </div >
+        </div>
     );
 };
 
