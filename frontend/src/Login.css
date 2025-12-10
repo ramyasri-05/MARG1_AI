@@ -105,6 +105,47 @@
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
+    width: 100%;
+    /* Ensure full width inside wrapper */
+    box-sizing: border-box;
+}
+
+/* Password Visibility Wrapper */
+.password-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+/* Ensure text doesn't go under icon */
+.password-wrapper .login-input {
+    padding-right: 45px;
+}
+
+.password-toggle-icon {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    font-size: 1.2rem;
+    /* Slighly larger */
+    color: rgba(255, 255, 255, 0.5);
+    /* Smoother default color */
+    user-select: none;
+    transition: all 0.3s ease;
+    display: flex;
+    /* Perfect center for SVG */
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+    /* Increase click area */
+    border-radius: 50%;
+}
+
+.password-toggle-icon:hover {
+    color: #00b894;
+    background: rgba(255, 255, 255, 0.1);
+    /* Subtle hover bg */
 }
 
 select.login-input {
@@ -289,10 +330,170 @@ select.login-input {
     color: white;
 }
 
+/* --- SPLIT LAYOUT STYLES --- */
+.login-overlay.split-layout {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    /* Push items apart */
+    align-items: center;
+    background: rgba(0, 5, 20, 0.85);
+    /* Darker overlay */
+    padding: 0 10%;
+    /* Increased padding to keep elements from edges */
+}
+
+/* Left Side: Hero Branding */
+.hero-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    /* Left align text */
+    padding-right: 20px;
+    animation: slideInLeft 1s ease-out;
+}
+
+.hero-content h1 {
+    font-size: 6rem;
+    font-weight: 900;
+    margin-bottom: 10px;
+    background: linear-gradient(to right, #44ff44, #00cec9);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 30px rgba(0, 255, 157, 0.3);
+    line-height: 1.1;
+}
+
+.hero-content .caption {
+    font-size: 1.8rem;
+    color: white;
+    font-weight: 300;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+}
+
+.hero-content .sub-caption {
+    font-size: 1.2rem;
+    color: #b2bec3;
+    font-style: italic;
+    /* Removed border-left: 4px solid #00b894; */
+    /* Removed padding-left: 15px; */
+    margin-top: 15px;
+}
+
+/* Decorative Line Removed */
+/* .hero-decoration { ... } */
+
+/* Right Side: Auth */
+.auth-section {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+    /* Pin to the right */
+    align-items: center;
+    animation: fadeIn 1.5s ease-out;
+}
+
+/* Override existing card for this layout to ensure it fits well */
+.auth-section .login-card {
+    width: 100%;
+    max-width: 400px;
+    background: rgba(20, 20, 35, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Responsive Design for Mobile */
+@media (max-width: 900px) {
+    .login-overlay.split-layout {
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    .hero-section {
+        align-items: center;
+        text-align: center;
+        padding-right: 0;
+        margin-bottom: 40px;
+    }
+
+    .hero-content h1 {
+        font-size: 3.5rem;
+    }
+
+    .hero-content .sub-caption {
+        border-left: none;
+        border-top: 2px solid #00b894;
+        padding-top: 10px;
+        padding-left: 0;
+    }
+
+    .auth-section {
+        width: 100%;
+    }
+
+    .hero-decoration {
+        margin: 20px auto;
+    }
+}
+
+/* --- Existing utility classes below ... --- */
 .mini-role-btn.selected {
     background: linear-gradient(90deg, #00b894, #00cec9);
     border-color: #00b894;
     color: white;
     box-shadow: 0 4px 10px rgba(0, 184, 148, 0.4);
     font-weight: bold;
+}
+
+/* --- Landing Page & Navigation Styles --- */
+.landing-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.landing-buttons {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.back-link-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 20px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.back-link-btn:hover {
+    color: #00b894;
+    transform: translateX(-3px);
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-50px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }

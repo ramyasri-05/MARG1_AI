@@ -13,6 +13,8 @@ const fallbackHospitals = [
     { id: 'HOSP-GOVT', name: 'Government General Hospital', lat: 16.5100, lng: 80.6180, address: 'Hanumanpet, Vijayawada' }
 ];
 
+import './Driver.css'; // Add CSS import
+
 // Component for Driver Flow
 const DriverDashboard = () => {
     const location = useLocation();
@@ -29,8 +31,12 @@ const DriverDashboard = () => {
     const [hospitals, setHospitals] = useState(fallbackHospitals);
     const [selectedHospital, setSelectedHospital] = useState(hospName || '');
     const [navigationActive, setNavigationActive] = useState(false);
+    const [isGreenWave, setIsGreenWave] = useState(false);
     // vehicleId is kept constant for the session
     const [vehicleId] = useState(ambNumber || 'AMB-' + Math.floor(Math.random() * 1000));
+
+    // Geolocation Display
+    const [currentLocationText, setCurrentLocationText] = useState("Detecting Location...");
 
     // Map & Nav State
     const [signals, setSignals] = useState([]);
@@ -75,13 +81,33 @@ const DriverDashboard = () => {
     // Initial Data Fetch
     useEffect(() => {
         // Get Initial Location
-        if (navigator.geolocation) {
+        if (navigator.geolocation && isLoaded) {
             navigator.geolocation.getCurrentPosition((position) => {
-                setNavOrigin({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
+                const { latitude, longitude } = position.coords;
+                setNavOrigin({ lat: latitude, lng: longitude });
+
+                // Reverse Geocode to get City Name
+                const geocoder = new window.google.maps.Geocoder();
+                geocoder.geocode({ location: { lat: latitude, lng: longitude } }, (results, status) => {
+                    if (status === "OK" && results[0]) {
+                        // Extract City or Locality
+                        const cityObj = results[0].address_components.find(c => c.types.includes("locality"));
+                        const areaObj = results[0].address_components.find(c => c.types.includes("sublocality"));
+
+                        const cityName = cityObj ? cityObj.long_name : "";
+                        const areaName = areaObj ? areaObj.long_name : "";
+
+                        const display = [areaName, cityName].filter(Boolean).join(", ");
+                        setCurrentLocationText(display || results[0].formatted_address);
+                    } else {
+                        setCurrentLocationText(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+                    }
                 });
-            }, (err) => console.error("Location access denied or error:", err));
+
+            }, (err) => {
+                console.error("Location access denied or error:", err);
+                setCurrentLocationText("Location Access Denied");
+            });
         }
 
         // Fetch Hospitals
@@ -105,7 +131,7 @@ const DriverDashboard = () => {
         axios.get('http://localhost:5000/api/signals').then(res => setSignals(res.data));
 
         return () => socket.disconnect();
-    }, []);
+    }, [isLoaded]);
 
     // Effect: Update Map Destination Preview when selection changes
     useEffect(() => {
@@ -168,16 +194,6 @@ const DriverDashboard = () => {
             const startLng = position.coords.longitude;
 
             try {
-                // If it's a Google Place (custom added), we might not need to hit the backend /navigate 
-                // if the backend expects specific IDs. 
-                // But for now, we'll try sending it. If backend fails finding ID, we handle it.
-                // Actually, backend looks up ID in its OWN list.
-                // FIX: If it's a new place, we can't rely on backend ID lookup.
-                // We should pass the LAT/LNG directly to backend or just use frontend state.
-
-                // For this hybrid approach, let's just use the frontend state for the destination
-                // and notify backend about the vehicle status.
-
                 setNavigationActive(true);
                 setNavOrigin({ lat: startLat, lng: startLng });
                 setNavDestination({
@@ -186,9 +202,25 @@ const DriverDashboard = () => {
                     name: hospitalObj.name
                 });
 
-                // Notify Backend (Optional - creating a new endpoint or reusing update)
-                // For now, we just start the visual navigation
-                alert(`Navigation Started to ${hospitalObj.name}`);
+                // Send Start Navigation Request to Backend with Metadata
+                await axios.post('http://localhost:5000/api/driver/navigate', {
+                    vehicleId,
+                    destinationId: destId,
+                    startLat,
+                    startLng,
+                    startLocationName: currentLocationText.replace('Detecting Location...', 'Unknown Location'), // Send specific start name
+                    patientCondition: 'Critical (Cardiac Arrest)', // Mock condition for demo
+                    destinationLat: hospitalObj.lat,
+                    destinationLng: hospitalObj.lng,
+                    destinationName: hospitalObj.name
+                });
+
+                // Simulate Traffic Clearing (Red -> Green)
+                setIsGreenWave(false); // Start Red
+                setTimeout(() => {
+                    setIsGreenWave(true); // Turn Green
+                    alert("🚦 GREEN WAVE ACTIVATED: Traffic Signals Cleared for Emergency Route!");
+                }, 3000);
 
             } catch (err) {
                 console.error(err);
@@ -202,128 +234,113 @@ const DriverDashboard = () => {
 
     if (!isLoaded) return <div className="loading-screen">Loading Maps...</div>;
 
+    // --- RENDER ---
     return (
-        <div className="dashboard-container">
-            <div className="control-panel">
-                <h2>🚑 Driver Console</h2>
-                {!navigationActive && (
-                    <div className="vehicle-id">ID: <strong>{vehicleId}</strong></div>
-                )}
+        <React.Fragment>
+            {/* STATE 1: SETUP CONSOLE (CENTERED) */}
+            {!navigationActive ? (
+                <div className="driver-setup-container">
+                    <div className="setup-card">
+                        <h2>🚑 Driver Dashboard</h2>
 
-                {!navigationActive ? (
-                    <div className="selection-box">
-                        <div style={{ marginBottom: '15px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px' }}>Ambulance ID:</label>
+                        <div className="input-group">
+                            <label>📍 Starting Location (Auto-Detected from Maps)</label>
                             <input
                                 type="text"
-                                className="dashboard-input" // Reusing or adding class
-                                style={{
-                                    width: '100%', padding: '10px', borderRadius: '8px',
-                                    border: '1px solid #444', background: '#222', color: 'white', fontWeight: 'bold'
-                                }}
-                                value={vehicleId}
+                                className="setup-input"
+                                value={currentLocationText}
                                 readOnly
+                                style={{ color: '#00cec9', fontWeight: 'bold' }}
                             />
                         </div>
 
-                        {/* GOOGLE PLACES SEARCH */}
-                        <div style={{ marginBottom: '15px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px' }}>🔎 Search Hospital:</label>
-                            <Autocomplete
-                                onLoad={ref => autocompleteRef.current = ref}
-                                onPlaceChanged={onPlaceChanged}
-                                fields={['place_id', 'geometry', 'name', 'formatted_address']}
-                                options={{
-                                    types: ['hospital', 'health', 'doctor'], // Restrict to relevant places
-                                    componentRestrictions: { country: "in" } // Optional: restrict to India if needed
-                                }}
+                        <div className="input-group">
+                            <label>🏥 Select Destination Hospital</label>
+                            <select
+                                className="setup-select"
+                                value={selectedHospital}
+                                onChange={(e) => setSelectedHospital(e.target.value)}
                             >
-                                <input
-                                    type="text"
-                                    placeholder="Type hospital name..."
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px',
-                                        borderRadius: '8px',
-                                        border: '1px solid #444',
-                                        background: '#333',
-                                        color: '#fff'
-                                    }}
-                                />
-                            </Autocomplete>
+                                <option value="">-- Choose a Hospital --</option>
+                                {hospitals.map((h, i) => (
+                                    <option key={h.id || i} value={h.id}>
+                                        {h.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
-                        <div style={{ marginBottom: '15px', textAlign: 'center', opacity: 0.7 }}>
-                            <span>- OR -</span>
-                        </div>
-
-                        <label style={{ display: 'block', marginBottom: '5px' }}>Select from List:</label>
-                        <select
-                            style={{
-                                width: '100%', padding: '10px', marginBottom: '15px',
-                                borderRadius: '8px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '1rem'
-                            }}
-                            value={selectedHospital}
-                            onChange={(e) => setSelectedHospital(e.target.value)}
-                        >
-                            <option value="">-- Select Hospital --</option>
-                            {hospitals.map((h, i) => (
-                                <option key={h.id || i} value={h.id}>
-                                    🏥 {h.name}
-                                </option>
-                            ))}
-                        </select>
-
-                        <button className="nav-btn" onClick={startNavigation}>
-                            START NAVIGATION ➡️
+                        <button className="big-emergency-btn" onClick={startNavigation}>
+                            🚨 START EMERGENCY ROUTE 🚨
                         </button>
                     </div>
-                ) : (
-                    <div className="navigation-status">
-                        <h3 className="blink">NAVIGATING...</h3>
-                        <p>Destination: <strong>{hospitals.find(h => h.id === selectedHospital)?.name || "Unknown"}</strong></p>
+                </div>
+            ) : (
+                /* STATE 2: ACTIVE NAVIGATION (MAP VIEW) */
+                <div className="dashboard-container full-map">
+                    <div className="control-panel">
+                        <h2>🚑 Driver Console</h2>
+                        <div className="navigation-status" style={{ textAlign: 'center' }}>
+                            {/* Status Header */}
+                            <div style={{
+                                background: isGreenWave ? 'rgba(46, 204, 113, 0.2)' : 'rgba(255, 71, 87, 0.2)',
+                                padding: '10px', borderRadius: '10px', marginBottom: '20px',
+                                border: `1px solid ${isGreenWave ? '#2ecc71' : '#ff4757'}`
+                            }}>
+                                <h3 className="blink" style={{ color: isGreenWave ? '#2ecc71' : '#ff4757', margin: 0 }}>
+                                    {isGreenWave ? '🟢 GREEN CHANNEL ACTIVE' : '🔴 CLEARING TRAFFIC...'}
+                                </h3>
+                            </div>
 
-                        <div className="live-info">
-                            <div className="info-card">
-                                <span className="label">⏱️ ETA</span>
-                                <span className="value">{eta || '--'}</span>
+                            {/* HUGE DIRECTION ARROW */}
+                            <div className="direction-display" style={{ margin: '40px 0' }}>
+                                <div style={{
+                                    fontSize: '8rem',
+                                    color: 'white',
+                                    filter: 'drop-shadow(0 0 10px rgba(0,255,255,0.5))',
+                                    animation: 'pulse 1.5s infinite'
+                                }}>
+                                    {nextTurn && nextTurn.toLowerCase().includes('left') ? '⬅️' :
+                                        nextTurn && nextTurn.toLowerCase().includes('right') ? '➡️' :
+                                            '⬆️'}
+                                </div>
+                                <p style={{ fontSize: '1.2rem', color: '#ccc', marginTop: '10px' }}>
+                                    {nextTurn || 'Follow Route'}
+                                </p>
                             </div>
-                            <div className="info-card">
-                                <span className="label">⚡ Speed</span>
-                                <span className="value">{speed || '0'} km/h</span>
+
+                            {/* Minimal Stats */}
+                            <div className="live-info" style={{ justifyContent: 'center', gap: '20px' }}>
+                                <div className="info-card">
+                                    <span className="label">ETA</span>
+                                    <span className="value" style={{ fontSize: '1.5rem' }}>{eta || '--'}</span>
+                                </div>
+                                <div className="info-card">
+                                    <span className="label">DIST</span>
+                                    <span className="value" style={{ fontSize: '1.5rem' }}>{distance || '--'}</span>
+                                </div>
                             </div>
-                            <div className="info-card">
-                                <span className="label">🛣️ Distance</span>
-                                <span className="value">{distance || '--'}</span>
-                            </div>
+
+                            <button className="stop-btn" onClick={() => setNavigationActive(false)} style={{ marginTop: '40px' }}>
+                                🛑 STOP NAVIGATION
+                            </button>
                         </div>
-
-                        <div className="turn-instruction">
-                            <h4>Current Direction:</h4>
-                            <div className="instruction-box">
-                                <span className="arrow">⬆️</span>
-                                <span className="text">{nextTurn || 'Calculating route...'}</span>
-                            </div>
-                        </div>
-
-                        <button className="stop-btn" onClick={() => setNavigationActive(false)}>
-                            🛑 STOP NAVIGATION
-                        </button>
                     </div>
-                )}
-            </div>
 
-            <div className="map-view">
-                <MapComponent
-                    manualLoad={true}
-                    signals={signals}
-                    vehicle={vehicle}
-                    origin={navOrigin}
-                    destination={navDestination}
-                    onNavigationUpdate={handleNavigationUpdate}
-                />
-            </div>
-        </div>
+                    <div className="map-view">
+                        <MapComponent
+                            manualLoad={true}
+                            signals={signals}
+                            vehicle={vehicle}
+                            origin={navOrigin}
+                            destination={navDestination}
+                            onNavigationUpdate={handleNavigationUpdate}
+                            isGreenWave={isGreenWave}
+                        />
+                    </div>
+                </div>
+            )}
+        </React.Fragment>
     );
 };
 

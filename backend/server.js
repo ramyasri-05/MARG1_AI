@@ -4,110 +4,86 @@ const http = require('http');
 const mongoose = require('mongoose'); // Add Mongoose
 const { Server } = require('socket.io');
 const cors = require('cors');
-const mongoose = require('mongoose');
+
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-// MongoDB Connection
+// --- DATABASE CONNECTION ---
+// User provided URI
+// Load from .env
+const MONGO_URI = process.env.MONGO_URI;
+
 console.log("⏳ Attempting to connect to MongoDB...");
-mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000 // Timeout after 5s instead of 30s
-})
+// Connection options
+mongoose.connect(MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected Successfully"))
     .catch(err => {
         console.error("❌ MongoDB Connection Error:", err.message);
-        console.error("💡 HINT: Check if your IP Address is whitelisted in MongoDB Atlas Network Access.");
+        console.warn("⚠️ Running in Offline Fallback Mode");
     });
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // Allow all origins for dev
+        origin: "*",
         methods: ["GET", "POST"]
     }
 });
 
 // --- VIJAYAWADA MOCK DATA ---
-
-// Traffic Signals (Key Junctions)
 const trafficSignals = [
-    { id: 'SIG-BENZ', name: 'Benz Circle', lat: 16.5062, lng: 80.6480, status: 'RED' },
-    { id: 'SIG-NTR', name: 'NTR Circle', lat: 16.5150, lng: 80.6300, status: 'RED' },
-    { id: 'SIG-RAGHU', name: 'Raghu Gardens Junction', lat: 16.4980, lng: 80.6550, status: 'RED' },
-    { id: 'SIG-CONTROL', name: 'Police Control Room', lat: 16.5080, lng: 80.6150, status: 'RED' }
+    { id: 'sig1', name: 'Benz Circle', lat: 16.4971, lng: 80.6517, status: 'RED' },
+    { id: 'sig2', name: 'Ramavarappadu Ring', lat: 16.5193, lng: 80.6625, status: 'RED' },
+    { id: 'sig3', name: 'Control Room', lat: 16.5083, lng: 80.6139, status: 'RED' },
+    { id: 'sig4', name: 'Putta Vantena', lat: 16.5100, lng: 80.6300, status: 'RED' }
 ];
 
-// Hospitals
 const hospitals = [
-    { id: 'HOSP-RAMESH', name: 'Ramesh Hospitals', lat: 16.5020, lng: 80.6400, address: 'MG Road, Vijayawada' },
-    { id: 'HOSP-MANIPAL', name: 'Manipal Hospital', lat: 16.4780, lng: 80.6200, address: 'Tadepalli, Vijayawada' },
-    { id: 'HOSP-GOVT', name: 'Government General Hospital', lat: 16.5100, lng: 80.6180, address: 'Hanumanpet, Vijayawada' }
+    { id: 'hosp1', name: 'Manipal Hospital', lat: 16.4880, lng: 80.6090, address: 'Tadepalli' },
+    { id: 'hosp2', name: 'Kamineni Hospitals', lat: 16.4714, lng: 80.7003, address: 'Kanuru' },
+    { id: 'hosp3', name: 'Ramesh Hospital', lat: 16.5026, lng: 80.6482, address: 'MG Road' },
+    { id: 'hosp4', name: 'Andhra Hospitals', lat: 16.4950, lng: 80.6450, address: 'Bhavanipuram' }
 ];
 
-// Active Emergency Vehicle State
-let emergencyVehicle = {
-    id: null,
-    lat: null,
-    lng: null,
-    destinationId: null,
-    route: [] // List of coordinates simulating the path
-};
-
-// Helper: Calculate distance between two coords (Haversine)
-function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-    var R = 6371; // Radius of the earth in km
-    var dLat = deg2rad(lat2 - lat1);
-    var dLon = deg2rad(lon2 - lon1);
-    var a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    var d = R * c; // Distance in km
-    return d;
-}
-
-function deg2rad(deg) {
-    return deg * (Math.PI / 180)
-}
-
-<<<<<<< HEAD
 // --- MONGODB MODELS ---
-const UserSchema = new mongoose.Schema({
-    name: String,
-    email: { type: String, unique: true, required: true },
+const userSchema = new mongoose.Schema({
+    fullName: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, required: true, enum: ['Driver', 'Police', 'Hospital', 'Admin'] } // Enforce roles
+    role: { type: String, required: true, enum: ['driver', 'police', 'hospital', 'admin'] },
+    ambulanceNumber: { type: String } // Optional, only for drivers
 });
-const User = mongoose.model('User', UserSchema);
+
+const User = mongoose.model('User', userSchema);
+
+// --- STATE ---
+let emergencyVehicles = []; // Support multiple vehicles
 
 // --- AUTH ENDPOINTS ---
 
 // Local Fallback Storage
 const localUsers = [];
 
-// --- AUTH ENDPOINTS ---
-
-// SIGNUP
+// AUTH: Signup
 app.post('/api/auth/signup', async (req, res) => {
-    const { name, email, password, role } = req.body;
-    if (!email || !password || !role) return res.status(400).json({ error: "Missing fields" });
+    const { fullName, email, password, role, ambulanceNumber } = req.body;
+    if (!fullName || !email || !password || !role) {
+        return res.status(400).json({ error: "All fields are required" });
+    }
 
     try {
         // 1. Try MongoDB
         if (mongoose.connection.readyState === 1) {
             const existingUser = await User.findOne({ email });
-            if (existingUser) return res.status(400).json({ error: "Email already exists" });
+            if (existingUser) return res.status(400).json({ error: "User already exists" });
 
-            const newUser = new User({ name, email, password, role });
+            const newUser = new User({ fullName, email, password, role, ambulanceNumber });
             await newUser.save();
-            console.log(`[AUTH-DB] New User: ${email}`);
-            return res.json({ success: true, user: { name: newUser.name, role: newUser.role } });
+
+            console.log(`[AUTH-DB] New User Signed Up: ${email} (${role})`);
+            return res.json({ success: true, message: "Account created successfully" });
         }
     } catch (err) {
         console.warn("⚠️ DB Error (Using Local Fallback):", err.message);
@@ -116,71 +92,30 @@ app.post('/api/auth/signup', async (req, res) => {
     // 2. Local Fallback
     console.log(`[AUTH-LOCAL] Saving to local memory: ${email}`);
     const exists = localUsers.find(u => u.email === email);
-    if (exists) return res.status(400).json({ error: "Email already exists (Local)" });
+    if (exists) return res.status(400).json({ error: "User already exists (Local)" });
 
-    const newUser = { name, email, password, role };
+    const newUser = { fullName, email, password, role, ambulanceNumber };
     localUsers.push(newUser);
-    res.json({ success: true, user: { name, role } });
-});
-
-// LOGIN
-=======
-// --- DATABASE CONNECTION ---
-const MONGO_URI = "mongodb+srv://vanamalisoulapurapu_db_user:Vanamali%402006@cluster0.jju9eqc.mongodb.net/marg_ai_db?retryWrites=true&w=majority&appName=Cluster0";
-
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ MongoDB Connected'))
-    .catch(err => console.error('❌ MongoDB Connection Error:', err));
-
-// --- USER MODEL ---
-const userSchema = new mongoose.Schema({
-    fullName: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true }, // In real app, hash this!
-    role: { type: String, required: true, enum: ['driver', 'police', 'hospital', 'admin'] }
-});
-
-const User = mongoose.model('User', userSchema);
-
-// --- AUTH ROUTES ---
-
-// AUTH: Signup
-app.post('/api/auth/signup', async (req, res) => {
-    const { fullName, email, password, role } = req.body;
-    if (!fullName || !email || !password || !role) {
-        return res.status(400).json({ error: "All fields are required" });
-    }
-
-    try {
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ error: "User already exists" });
-        }
-
-        const newUser = new User({ fullName, email, password, role });
-        await newUser.save();
-
-        console.log(`[AUTH] New User Signed Up: ${email} (${role})`);
-        res.json({ success: true, message: "Account created successfully" });
-    } catch (err) {
-        console.error("Signup Error:", err);
-        res.status(500).json({ error: "Server Error during signup" });
-    }
+    res.json({ success: true, message: "Account created successfully (Local)" });
 });
 
 // AUTH: Login
->>>>>>> 427d256fcba396027a090d41b189024db37aadf9
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
     try {
-<<<<<<< HEAD
         // 1. Try MongoDB
         if (mongoose.connection.readyState === 1) {
             const user = await User.findOne({ email });
+
             if (user && user.password === password) {
-                console.log(`[AUTH-DB] Login Success: ${email}`);
-                return res.json({ success: true, role: user.role, name: user.name });
+                console.log(`[AUTH-DB] Login Success: ${email} -> ${user.role}`);
+                return res.json({
+                    success: true,
+                    role: user.role,
+                    name: user.fullName,
+                    ambulanceNumber: user.ambulanceNumber
+                });
             }
         }
     } catch (err) {
@@ -191,27 +126,36 @@ app.post('/api/auth/login', async (req, res) => {
     const localUser = localUsers.find(u => u.email === email && u.password === password);
     if (localUser) {
         console.log(`[AUTH-LOCAL] Login Success: ${email}`);
-        return res.json({ success: true, role: localUser.role, name: localUser.name });
+        return res.json({
+            success: true,
+            role: localUser.role,
+            name: localUser.fullName,
+            ambulanceNumber: localUser.ambulanceNumber
+        });
     }
 
-    // Try finding in DB even if connection state was flaky, or return error
-    res.status(401).json({ error: "Invalid Credentials" });
-=======
-        const user = await User.findOne({ email });
-
-        // Simple password check (visual prototype only)
-        if (!user || user.password !== password) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
-
-        console.log(`[AUTH] Login Success: ${email} -> ${user.role}`);
-        res.json({ success: true, role: user.role, name: user.fullName });
-    } catch (err) {
-        console.error("Login Error:", err);
-        res.status(500).json({ error: "Server Error during login" });
-    }
->>>>>>> 427d256fcba396027a090d41b189024db37aadf9
+    // Return error if neither worked
+    res.status(401).json({ error: "Invalid credentials" });
 });
+
+// --- UTILITY FUNCTIONS ---
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+    var R = 6371; // Radius of the earth in km
+    var dLat = deg2rad(lat2 - lat1);  // deg2rad below
+    var dLon = deg2rad(lon2 - lon1);
+    var a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        ;
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    var d = R * c; // Distance in km
+    return d;
+}
+
+function deg2rad(deg) {
+    return deg * (Math.PI / 180)
+}
 
 // --- API ENDPOINTS ---
 
@@ -226,7 +170,7 @@ app.get('/api/hospitals', (req, res) => {
 
 // DRIVER: Start Navigation
 app.post('/api/driver/navigate', (req, res) => {
-    const { vehicleId, destinationId, startLat, startLng, destinationName, destinationLat, destinationLng } = req.body;
+    const { vehicleId, destinationId, startLat, startLng, destinationName, destinationLat, destinationLng, startLocationName, patientCondition } = req.body;
 
     let hospital = hospitals.find(h => h.id === destinationId);
 
@@ -246,23 +190,35 @@ app.post('/api/driver/navigate', (req, res) => {
     }
 
     // Mock Route Generation (Simple straight line points for now, or just return dest)
-    // In a real app, we'd use Google Maps Directions API here.
     const route = [
         { lat: startLat, lng: startLng },
         { lat: (startLat + hospital.lat) / 2, lng: (startLng + hospital.lng) / 2 }, // Midpoint
         { lat: hospital.lat, lng: hospital.lng }
     ];
 
-    emergencyVehicle = {
+    const newVehicle = {
         id: vehicleId,
         lat: startLat,
         lng: startLng,
         destinationId: destinationId,
-        route: route
+        destinationName: hospital.name,
+        startLocationName: startLocationName || "Unknown Location",
+        patientCondition: patientCondition || "Stable",
+        route: route,
+        eta: 'Calculating...',
+        speed: 0
     };
 
+    // Update or Add
+    const idx = emergencyVehicles.findIndex(v => v.id === vehicleId);
+    if (idx >= 0) emergencyVehicles[idx] = newVehicle;
+    else emergencyVehicles.push(newVehicle);
+
     console.log(`[DRIVER] Vehicle ${vehicleId} started navigation to ${hospital.name}`);
-    io.emit('vehicle-update', emergencyVehicle);
+
+    io.emit('vehicle-update', newVehicle); // For the specific driver
+    io.emit('vehicles-update', emergencyVehicles); // For Police/Map
+
     res.json({ success: true, route, hospital });
 });
 
@@ -279,19 +235,30 @@ app.post('/api/police/status', (req, res) => {
     res.json(trafficSignals);
 });
 
+// POLICE: Clear All Vehicles (Reset)
+app.post('/api/police/clear-vehicles', (req, res) => {
+    emergencyVehicles = [];
+    console.log(`[POLICE] Cleared all emergency vehicles`);
+    io.emit('vehicles-update', emergencyVehicles);
+    res.json({ success: true });
+});
+
 // SYSTEM: Periodic/Live Location Update (from AI or App)
 app.post('/api/vehicle/update', (req, res) => {
     const { id, lat, lng, eta, speed, distance, destinationId } = req.body;
 
-    if (emergencyVehicle.id === id) {
-        emergencyVehicle.lat = lat;
-        emergencyVehicle.lng = lng;
-        if (eta) emergencyVehicle.eta = eta;
-        if (speed) emergencyVehicle.speed = speed;
-        if (distance) emergencyVehicle.distance = distance;
+    let vehicle = emergencyVehicles.find(v => v.id === id);
+
+    if (vehicle) {
+        vehicle.lat = lat;
+        vehicle.lng = lng;
+        if (eta) vehicle.eta = eta;
+        if (speed) vehicle.speed = speed;
+        if (distance) vehicle.distance = distance;
     } else {
         // New vehicle or untracked
-        emergencyVehicle = { id, lat, lng, destinationId: destinationId || null, route: [], eta, speed, distance };
+        vehicle = { id, lat, lng, destinationId: destinationId || null, route: [], eta, speed, distance };
+        emergencyVehicles.push(vehicle);
     }
 
     console.log(`[GPS] Vehicle ${id} at [${lat}, ${lng}]`);
@@ -315,7 +282,8 @@ app.post('/api/vehicle/update', (req, res) => {
     });
 
     // Emit updates to frontend
-    io.emit('vehicle-update', emergencyVehicle);
+    io.emit('vehicle-update', emergencyVehicles.find(v => v.id === id)); // Update single vehicle
+    io.emit('vehicles-update', emergencyVehicles); // Update all vehicles
     io.emit('signals-update', trafficSignals);
 
     res.json({ success: true, triggeredSignal });
@@ -325,7 +293,7 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     // Send initial state
     socket.emit('signals-update', trafficSignals);
-    if (emergencyVehicle.id) socket.emit('vehicle-update', emergencyVehicle);
+    socket.emit('vehicles-update', emergencyVehicles); // Send all currently active
 
     socket.on('disconnect', () => {
         console.log('Client disconnected');

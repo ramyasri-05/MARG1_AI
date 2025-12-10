@@ -59,8 +59,14 @@ const HospitalDashboard = () => {
         return "En Route to " + closest.name;
     };
 
-    // Filter for THIS hospital
-    const incomingVehicles = vehicles.filter(v => v.destinationId === myHospitalId);
+    // Filter for THIS hospital and sort by ETA (simple string sort for now, ideally parse mins)
+    const incomingVehicles = vehicles
+        .filter(v => v.destinationId === myHospitalId)
+        .sort((a, b) => {
+            const etaA = parseInt(a.eta) || 999;
+            const etaB = parseInt(b.eta) || 999;
+            return etaA - etaB;
+        });
 
     return (
         <div style={{ display: 'flex', height: '100vh', background: '#e0e0e0' }}>
@@ -106,8 +112,13 @@ const HospitalDashboard = () => {
                                 </div>
                                 <div style={{ fontSize: '0.9em', color: '#555' }}>
                                     <p style={{ margin: '5px 0' }}>
-                                        📍 Location: <strong>{getReadableLocation(v, signals)}</strong>
-                                        <span style={{ fontSize: '0.8em', color: '#999' }}> ({v.lat.toFixed(4)}, {v.lng.toFixed(4)})</span>
+                                        🏥 <strong>Condition: {v.patientCondition || 'Unknown'}</strong>
+                                    </p>
+                                    <p style={{ margin: '5px 0' }}>
+                                        📢 From: <strong>{v.startLocationName || 'Unknown Location'}</strong>
+                                    </p>
+                                    <p style={{ margin: '5px 0' }}>
+                                        📍 Near: <strong>{getReadableLocation(v, signals)}</strong>
                                     </p>
                                     <p style={{ margin: '5px 0' }}>
                                         ⏱️ ETA: <strong>{v.eta || 'Calculating...'}</strong>

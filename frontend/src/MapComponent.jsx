@@ -35,6 +35,7 @@ const MapComponent = (props) => {
                 origin: origin || center, // Use dynamic origin if available
                 destination: { lat: destination.lat, lng: destination.lng } || destination.name,
                 travelMode: window.google.maps.TravelMode.DRIVING,
+                provideRouteAlternatives: true
             }, (result, status) => {
                 if (status === window.google.maps.DirectionsStatus.OK) {
                     setDirectionsResponse(result);
@@ -173,12 +174,14 @@ const MapComponent = (props) => {
                 <DirectionsRenderer
                     directions={directionsResponse}
                     options={{
-                        suppressMarkers: true, // IMPORTANT: We render our own markers
+                        suppressMarkers: true, // We render our own markers
                         polylineOptions: {
-                            strokeColor: "#00b894",
-                            strokeWeight: 6,
-                            strokeOpacity: 0.8
-                        }
+                            strokeColor: props.isGreenWave ? "#2ecc71" : "#ff4757", // Green if Wave Active, else Red
+                            strokeWeight: 8,
+                            strokeOpacity: 0.9
+                        },
+                        // Show alternative routes (Google Maps defaults to grey lines for alternatives)
+                        routeIndex: 0
                     }}
                 />
             )}
