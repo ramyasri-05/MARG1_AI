@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios'; // Import axios
 import './Login.css';
 
 const Login = () => {
@@ -13,6 +14,12 @@ const Login = () => {
     const showLoginForm = view === 'login';
     const showSignupForm = view === 'signup';
     const showDriverForm = view === 'driver_details';
+
+    // Form States
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [selectedRole, setSelectedRole] = useState('Driver'); // Default role for signup
 
     const [ambNumber, setAmbNumber] = useState('');
     const [hospName, setHospName] = useState('');
@@ -41,24 +48,60 @@ const Login = () => {
         setSearchParams({ view: 'signup' });
     };
 
-    const handleSignupSubmit = () => {
-        if (!hospName || hospName === "Select Hospital") {
-            // Reuse hospName as 'selectedRole' for signup context
-            alert("Please select a Role!");
+    const handleSignupSubmit = async () => {
+        if (!name || !email || !password || !selectedRole) {
+            alert("Please fill in all fields!");
             return;
         }
-        // Save Mock User
-        localStorage.setItem('margUserRole', hospName);
-        // alert("Account Created Successfully! Please Login."); // Removed as per user request
-        setSearchParams({ view: 'login' });
+
+        try {
+            const res = await axios.post('http://localhost:5000/api/auth/signup', {
+                name, email, password, role: selectedRole
+            });
+            if (res.data.success) {
+                alert("Account Created Successfully! Please Login.");
+                setSearchParams({ view: 'login' });
+            }
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.error || "Signup Failed");
+        }
     };
 
-    const handleLoginSubmit = () => {
-        // Mock Validation
-        // In a real app, we'd check credentials here.
+    const handleLoginSubmit = async () => {
+        if (!email || !password) {
+            alert("Please enter email and password");
+            return;
+        }
 
-        // Always go to Role Selection as per user request
-        setSearchParams({ view: 'roles' });
+        try {
+            const res = await axios.post('http://localhost:5000/api/auth/login', {
+                email, password
+            });
+
+            if (res.data.success) {
+                const role = res.data.role; // 'Driver', 'Police', etc.
+
+                // --- AUTO REDIRECT BASED ON ROLE ---
+                if (role === 'Driver') {
+                    // For Driver, we still need Ambulance/Hospital details
+                    // So we go to the Driver Details form immediately
+                    setSearchParams({ view: 'driver_details' });
+                } else if (role === 'Police') {
+                    navigate('/police');
+                } else if (role === 'Hospital') {
+                    navigate('/hospital');
+                } else if (role === 'Admin') {
+                    navigate('/admin');
+                } else {
+                    // Fallback
+                    setSearchParams({ view: 'roles' });
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Invalid Credentials");
+        }
     };
 
     return (
@@ -117,11 +160,15 @@ const Login = () => {
                                     type="email"
                                     placeholder="Email Address"
                                     className="login-input"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                 />
                                 <input
                                     type="password"
                                     placeholder="Password"
                                     className="login-input"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                 />
                                 <button className="role-btn login-submit-btn" onClick={handleLoginSubmit}>
                                     Login
@@ -153,27 +200,45 @@ const Login = () => {
                         <div className="role-selection fade-in">
                             <h3>🚀 Create Account</h3>
                             <div className="driver-form">
-                                <input type="text" placeholder="Full Name" className="login-input" />
-                                <input type="email" placeholder="Email Address" className="login-input" />
-                                <input type="password" placeholder="Password" className="login-input" />
+                                <input
+                                    type="text"
+                                    placeholder="Full Name"
+                                    className="login-input"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                />
+                                <input
+                                    type="email"
+                                    placeholder="Email Address"
+                                    className="login-input"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
+                                <input
+                                    type="password"
+                                    placeholder="Password"
+                                    className="login-input"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
 
                                 {/* Replaced Dropdown with Selection Grid */}
                                 <div className="role-grid-input">
                                     <button
-                                        className={`mini-role-btn ${hospName === 'driver' ? 'selected' : ''}`}
-                                        onClick={() => setHospName('driver')}
+                                        className={`mini-role-btn ${selectedRole === 'Driver' ? 'selected' : ''}`}
+                                        onClick={() => setSelectedRole('Driver')}
                                     >🚑 Driver</button>
                                     <button
-                                        className={`mini-role-btn ${hospName === 'police' ? 'selected' : ''}`}
-                                        onClick={() => setHospName('police')}
+                                        className={`mini-role-btn ${selectedRole === 'Police' ? 'selected' : ''}`}
+                                        onClick={() => setSelectedRole('Police')}
                                     >👮 Police</button>
                                     <button
-                                        className={`mini-role-btn ${hospName === 'hospital' ? 'selected' : ''}`}
-                                        onClick={() => setHospName('hospital')}
+                                        className={`mini-role-btn ${selectedRole === 'Hospital' ? 'selected' : ''}`}
+                                        onClick={() => setSelectedRole('Hospital')}
                                     >🏥 Hospital</button>
                                     <button
-                                        className={`mini-role-btn ${hospName === 'admin' ? 'selected' : ''}`}
-                                        onClick={() => setHospName('admin')}
+                                        className={`mini-role-btn ${selectedRole === 'Admin' ? 'selected' : ''}`}
+                                        onClick={() => setSelectedRole('Admin')}
                                     >🛡️ Admin</button>
                                 </div>
 

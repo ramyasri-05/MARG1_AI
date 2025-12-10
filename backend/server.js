@@ -1,11 +1,27 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const mongoose = require('mongoose'); // Add Mongoose
 const { Server } = require('socket.io');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// MongoDB Connection
+// MongoDB Connection
+console.log("⏳ Attempting to connect to MongoDB...");
+mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000 // Timeout after 5s instead of 30s
+})
+    .then(() => console.log("✅ MongoDB Connected Successfully"))
+    .catch(err => {
+        console.error("❌ MongoDB Connection Error:", err.message);
+        console.error("💡 HINT: Check if your IP Address is whitelisted in MongoDB Atlas Network Access.");
+    });
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -58,6 +74,80 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 function deg2rad(deg) {
     return deg * (Math.PI / 180)
 }
+
+// --- MONGODB MODELS ---
+const UserSchema = new mongoose.Schema({
+    name: String,
+    email: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
+    role: { type: String, required: true, enum: ['Driver', 'Police', 'Hospital', 'Admin'] } // Enforce roles
+});
+const User = mongoose.model('User', UserSchema);
+
+// --- AUTH ENDPOINTS ---
+
+// Local Fallback Storage
+const localUsers = [];
+
+// --- AUTH ENDPOINTS ---
+
+// SIGNUP
+app.post('/api/auth/signup', async (req, res) => {
+    const { name, email, password, role } = req.body;
+    if (!email || !password || !role) return res.status(400).json({ error: "Missing fields" });
+
+    try {
+        // 1. Try MongoDB
+        if (mongoose.connection.readyState === 1) {
+            const existingUser = await User.findOne({ email });
+            if (existingUser) return res.status(400).json({ error: "Email already exists" });
+
+            const newUser = new User({ name, email, password, role });
+            await newUser.save();
+            console.log(`[AUTH-DB] New User: ${email}`);
+            return res.json({ success: true, user: { name: newUser.name, role: newUser.role } });
+        }
+    } catch (err) {
+        console.warn("⚠️ DB Error (Using Local Fallback):", err.message);
+    }
+
+    // 2. Local Fallback
+    console.log(`[AUTH-LOCAL] Saving to local memory: ${email}`);
+    const exists = localUsers.find(u => u.email === email);
+    if (exists) return res.status(400).json({ error: "Email already exists (Local)" });
+
+    const newUser = { name, email, password, role };
+    localUsers.push(newUser);
+    res.json({ success: true, user: { name, role } });
+});
+
+// LOGIN
+app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        // 1. Try MongoDB
+        if (mongoose.connection.readyState === 1) {
+            const user = await User.findOne({ email });
+            if (user && user.password === password) {
+                console.log(`[AUTH-DB] Login Success: ${email}`);
+                return res.json({ success: true, role: user.role, name: user.name });
+            }
+        }
+    } catch (err) {
+        console.warn("⚠️ DB Error (Using Local Fallback):", err.message);
+    }
+
+    // 2. Local Fallback
+    const localUser = localUsers.find(u => u.email === email && u.password === password);
+    if (localUser) {
+        console.log(`[AUTH-LOCAL] Login Success: ${email}`);
+        return res.json({ success: true, role: localUser.role, name: localUser.name });
+    }
+
+    // Try finding in DB even if connection state was flaky, or return error
+    res.status(401).json({ error: "Invalid Credentials" });
+});
 
 // --- API ENDPOINTS ---
 
