@@ -14,7 +14,8 @@ const center = {
 
 const LIBRARIES = ['geometry'];
 
-const MapComponent = ({ signals, vehicle: propVehicle, vehicles: propVehicles, origin, destination, onNavigationUpdate }) => {
+const MapComponent = (props) => {
+    const { signals, vehicle: propVehicle, vehicles: propVehicles, origin, destination, onNavigationUpdate, manualLoad } = props;
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     const [directionsResponse, setDirectionsResponse] = useState(null);
     const [internalVehicle, setInternalVehicle] = useState(null);
@@ -31,7 +32,7 @@ const MapComponent = ({ signals, vehicle: propVehicle, vehicles: propVehicles, o
             const directionsService = new window.google.maps.DirectionsService();
 
             directionsService.route({
-                origin: center, // Start at Benz Circle (Mock)
+                origin: origin || center, // Use dynamic origin if available
                 destination: { lat: destination.lat, lng: destination.lng } || destination.name,
                 travelMode: window.google.maps.TravelMode.DRIVING,
             }, (result, status) => {
@@ -108,61 +109,107 @@ const MapComponent = ({ signals, vehicle: propVehicle, vehicles: propVehicles, o
         );
     }
 
+    const mapOptions = {
+        disableDefaultUI: false, // Keep zoom controls etc.
+        clickableIcons: false,   // Disable clicking on default POIs
+        styles: [
+            {
+                featureType: "poi",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }] // Hide POI labels (businesses, etc.)
+            }
+        ]
+    };
+
+    const MapContent = (
+        <GoogleMap
+            mapContainerStyle={containerStyle}
+            center={origin || center}
+            zoom={14}
+            options={mapOptions}
+            onLoad={map => mapRef.current = map}
+        >
+            {/* Origin Marker (Ambulance) */}
+            {origin && (
+                <Marker
+                    position={{ lat: origin.lat, lng: origin.lng }}
+                    title="My Ambulance"
+                    icon={{
+                        path: window.google ? window.google.maps.SymbolPath.CIRCLE : null,
+                        scale: 10,
+                        fillColor: "#007bff",
+                        fillOpacity: 1,
+                        strokeWeight: 2,
+                        strokeColor: "white",
+                    }}
+                />
+            )}
+
+            {/* Destination Marker */}
+            {destination && (
+                <Marker
+                    position={{ lat: destination.lat, lng: destination.lng }}
+                    title={destination.name || "Destination"}
+                    animation={window.google ? window.google.maps.Animation.DROP : null}
+                />
+            )}
+
+            {/* Traffic Signals (Optional - kept for context but can be removed if user wants ONLY amb/dest) */}
+            {signals.map(sig => (
+                <Marker
+                    key={sig.id}
+                    position={{ lat: sig.lat, lng: sig.lng }}
+                    icon={{
+                        url: sig.status === 'RED'
+                            ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                            : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
+                    }}
+                    title={sig.name}
+                />
+            ))}
+
+            {/* Real Route */}
+            {directionsResponse && (
+                <DirectionsRenderer
+                    directions={directionsResponse}
+                    options={{
+                        suppressMarkers: true, // IMPORTANT: We render our own markers
+                        polylineOptions: {
+                            strokeColor: "#00b894",
+                            strokeWeight: 6,
+                            strokeOpacity: 0.8
+                        }
+                    }}
+                />
+            )}
+
+            {/* Other Emergency Vehicles */}
+            {allVehicles.map((v, i) => (
+                <Marker
+                    key={v.id || i}
+                    position={{ lat: v.lat, lng: v.lng }}
+                    icon={{
+                        path: window.google ? window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW : null,
+                        scale: 6,
+                        fillColor: "#ff0000",
+                        fillOpacity: 1,
+                        strokeWeight: 2,
+                        strokeColor: "#ffffff",
+                        rotation: v.heading || 0,
+                    }}
+                    title={`Ambulance ${v.id || ''}`}
+                />
+            ))}
+        </GoogleMap>
+    );
+
+    if (manualLoad) {
+        return MapContent;
+    }
+
     return (
         <LoadScript googleMapsApiKey={apiKey} libraries={LIBRARIES}>
-            <GoogleMap
-                mapContainerStyle={containerStyle}
-                center={center}
-                zoom={14}
-                onLoad={map => mapRef.current = map}
-            >
-                {/* Traffic Signals */}
-                {signals.map(sig => (
-                    <Marker
-                        key={sig.id}
-                        position={{ lat: sig.lat, lng: sig.lng }}
-                        icon={{
-                            url: sig.status === 'RED'
-                                ? 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                                : 'http://maps.google.com/mapfiles/ms/icons/green-dot.png'
-                        }}
-                        title={sig.name}
-                    />
-                ))}
-
-                {/* Real Route */}
-                {directionsResponse && (
-                    <DirectionsRenderer
-                        directions={directionsResponse}
-                        options={{
-                            suppressMarkers: true, // We have our own vehicle marker
-                            polylineOptions: {
-                                strokeColor: "#00b894",
-                                strokeWeight: 6,
-                                strokeOpacity: 0.8
-                            }
-                        }}
-                    />
-                )}
-
-                {/* Emergency Vehicles */}
-                {allVehicles.map((v, i) => (
-                    <Marker
-                        key={v.id || i}
-                        position={{ lat: v.lat, lng: v.lng }}
-                        icon={{
-                            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                            scale: 6,
-                            fillColor: "#ff0000",
-                            fillOpacity: 1,
-                            strokeWeight: 2,
-                            strokeColor: "#ffffff",
-                            rotation: v.heading || 0,
-                        }}
-                        title={`Ambulance ${v.id || ''}`}
-                    />
-                ))}
-            </GoogleMap>
+            {MapContent}
         </LoadScript>
     );
 };
